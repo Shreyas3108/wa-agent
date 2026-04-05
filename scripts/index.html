@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<script>
+window.ai_edge_gallery_get_result = async function(data) {
+  try {
+    const { worker_url, api_secret, filter = null } =
+      typeof data === 'string' ? JSON.parse(data) : data;
+
+    if (!worker_url || !api_secret) {
+      return JSON.stringify({
+        error: 'Missing worker_url or api_secret. Please provide both.'
+      });
+    }
+
+    const base = worker_url.replace(/\/$/, '');
+    const url  = filter
+      ? `${base}/fetch?filter=${encodeURIComponent(filter)}`
+      : `${base}/fetch`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'x-api-secret': api_secret },
+    });
+
+    if (response.status === 401) {
+      return JSON.stringify({ error: 'Invalid API secret.' });
+    }
+    if (!response.ok) {
+      return JSON.stringify({ error: `Worker returned ${response.status}` });
+    }
+
+    const result = await response.json();
+
+    // Enrich with timeAgo
+    const groups = (result.groups || []).map(g => ({
+      ...g,
+      messages: g.messages.map(m => ({
+        ...m,
+        timeAgo: timeAgo(m.timestamp),
+      })),
+    }));
+
+    const count = groups.reduce((sum, g) => sum + g.messageCount, 0);
+
+    return JSON.stringify({ count, groups });
+
+  } catch (err) {
+    return JSON.stringify({ error: err.message });
+  }
+};
+
+function timeAgo(unixSeconds) {
+  if (!unixSeconds) return '';
+  const s = Math.floor(Date.now() / 1000) - Number(unixSeconds);
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+}
+</script>
+</body>
+</html>
